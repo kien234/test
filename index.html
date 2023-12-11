@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+
+    <title>Quản lý thông tin học sinh</title>
+</head>
+<body>
+    <h1>Quản lý thông tin học sinh</h1>
+
+    <form id="infoForm">
+        <label for="classInput">Lớp:</label>
+        <select id="classInput" name="classInput" onchange="updateStudentList()" required>
+            <option value="" disabled selected>Chọn lớp</option>
+            
+        </select>
+
+        <br>
+
+        <label for="studentInput">Họ Tên:</label>
+        <select id="studentInput" name="studentInput" required>
+            <option value="" disabled selected>Chọn học sinh</option>
+            <!-- Danh sách học sinh sẽ được cập nhật bằng JavaScript -->
+        </select>
+
+        <br>
+
+        <label for="issue">Lỗi mắc phải:</label>
+        <input type="text" id="issue" required>
+
+        <label for="deductPoints">Điểm bị trừ:</label>
+        <input type="text" id="deductPoints" required>
+
+        <button type="button" onclick="addStudent()">Thêm Học Sinh</button>
+        <button type="button" onclick="displayHistory()">Hiển thị Lịch Sử</button>
+<div id="historyList"></div>
+
+    </form>
+
+    <button type="button" onclick="exportToExcel()">Xuất Excel</button>
+
+    <h2>Danh sách học sinh</h2>
+    <table id="studentTable">
+        <thead>
+            <tr>
+                <th>Họ tên</th>
+                <th>Lớp</th>
+                <th>Lỗi mắc phải</th>
+                <th>Điểm bị trừ</th>
+                <th>Số Điểm Hiện Có</th>
+            </tr>
+        </thead>
+        <tbody id="studentList">
+            <!-- Danh sách học sinh sẽ được hiển thị ở đây -->
+        </tbody>
+    </table>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Awesomplete/1.7.3/awesomplete.min.js"></script>
+
+    <script>
+        // Lấy lịch sử từ local storage nếu tồn tại, ngược lại sử dụng một mảng rỗng
+        let history = JSON.parse(localStorage.getItem('history')) || [];
+    
+        function saveToLocalStorage() {
+            // Lưu lịch sử vào local storage
+            localStorage.setItem('history', JSON.stringify(history));
+        }
+    
+        function addToHistory(action, data) {
+            const timestamp = new Date();
+            const record = { timestamp, action, data };
+            history.push(record);
+            saveToLocalStorage(); // Lưu lịch sử sau mỗi lần thêm mới
+        }
+    
+        function displayHistory() {
+            const historyList = document.getElementById('historyList');
+            while (historyList.firstChild) {
+                historyList.removeChild(historyList.firstChild);
+            }
+    
+            history.forEach(record => {
+                const row = document.createElement('div');
+                row.innerHTML = `
+                    <p>${record.timestamp.toLocaleString()} - ${record.action}: ${JSON.stringify(record.data)}</p>
+                `;
+                historyList.appendChild(row);
+            });
+        }
+
+        let students = [];
+        let classDeductPoints = {};
+        let classThresholds = {};
+        let totalInitialPoints = 10; // Điểm ban đầu
+
+        const classes = {
+            '12D2': [
+                'Nguyễn Thị Phương Anh', 'Nguyễn Tất Đông', 'Thái Hương Giang', 'Trần Thị Hạnh', 'Dương Bảo Hân',
+                'Lương Thị Hiền', 'Nguyễn Thị Hiền', 'Nguyễn Tất Hiếu', 'Nguyễn Thị Hòa', 'Hà Thị Hoài',
+                'Nguyễn Thi Thanh Hoài', 'Nguyễn Thị Thu Hoài', 'Nguyễn Đình Hoàng', 'Lê Thị Huệ', 'Nguyễn Khắc Huy',
+                'Nguyễn Thị Huyền', 'Nguyễn Thị Thu Hương', 'Nguyễn Văn Kiên', 'Lê Thị Phương Linh', 'Nguyễn Thị Phương Linh',
+                'Hoàng Thị Loan', 'Nguyễn Thị Ly', 'Thái Thị Phương Mây', 'Nguyễn Thị Mai Oanh', 'Nguyễn Thị Tú Oanh',
+                'Nguyễn Tất Phong', 'Đậu Thị Phương', 'Nguyễn Thị Quỳnh', 'Nguyễn Thuý Quỳnh', 'Trần Thị Sáu',
+                'Nguyễn Trường Sơn', 'Nguyễn Thị Hoài Thu', 'Nguyễn Thị Thuỷ', 'Hồ Thị Thúy', 'Nguyễn Thị Thanh Thương',
+                'Nguyễn Thị Tình', 'Hoàng Thị Hương Trà', 'Nguyễn Phương Trang', 'Nguyễn Thị Huyền Trang', 'Nguyễn Thị Mai Trang',
+                'Võ Thị Vân', 'Nguyễn Lê Vy', 'Trần Thị Xuân'
+            ],
+            '12D3': [
+                'Hoàng Thị Trâm Anh', 'Nguyễn Thị Lan Anh', 'Nguyễn Thị Tú Anh', 'Nguyễn Kim Chi', 'Nguyễn Thị Mỹ Duyên',
+                'Thái Thị Mỹ Duyên', 'Nguyễn Thị Định', 'Nguyễn Tất Đông', 'Nguyễn Công Hiếu', 'Nguyễn Thị Hoài',
+                'Thái Quỳnh Hương', 'Nguyễn Công Lân', 'Nguyễn Thị Lê', 'Phạm Văn Mạnh', 'Trần Thị Lê Na',
+                'Nguyễn Thị Quỳnh Nga', 'Nguyễn Thị Ngọc', 'Nguyễn Thị Ngọc', 'Nguyễn Thị Nhung', 'Nguyễn Thị Oanh',
+                'Nguyễn Thị Phương', 'Nguyễn Thị Quỳnh', 'Nguyễn Thị Như Quỳnh', 'Thái Thị Như Quỳnh', 'Nguyễn Thị Hương Son',
+                'Hoàng Thị Mỹ Tâm', 'Trần Thị Tâm', 'Nguyễn Thị Phương Thảo', 'Bùi Tất Thắng', 'Lê Thị Thuý',
+                'Nguyễn Minh Thư', 'Nguyễn Thị Thủy Tiên', 'Lê Thị Thùy Trang', 'Nguyễn Thị Trang', 'Nguyễn Đình Trường',
+                'Đào Thị Thanh Vân', 'Lê Thị Thuý Vân', 'Nguyễn Thị Vinh', 'Nguyễn Thị Hạ Vy', 'Nguyễn Thị Như Ý',
+                'Nguyễn Thị Yến', 'Nguyễn Thị Yến'
+            ]
+        };
+
+        const classSelect = document.getElementById('classInput');
+        const studentSelect = document.getElementById('studentInput');
+
+        // Lấy thẻ select và thêm các tùy chọn từ đối tượng classes
+        Object.keys(classes).forEach(grade => {
+            const option = document.createElement('option');
+            option.value = grade;
+            option.text = grade;
+            classSelect.appendChild(option);
+        });
+
+        function updateStudentList() {
+            // Xóa các tùy chọn hiện tại
+            studentSelect.innerHTML = '<option value="" disabled selected>Chọn học sinh</option>';
+
+            // Lấy giá trị của lớp đã chọn
+            const selectedClass = classSelect.value;
+
+            // Thêm các tùy chọn học sinh từ lớp đã chọn
+            classes[selectedClass].forEach(student => {
+                const option = document.createElement('option');
+                option.value = student;
+                option.text = student;
+                studentSelect.appendChild(option);
+            });
+        }
+
+        function addStudent() {
+            const name = document.getElementById('studentInput').value;
+            const className = document.getElementById('classInput').value;
+            const issue = document.getElementById('issue').value;
+            const deductPoints = parseFloat(document.getElementById('deductPoints').value);
+        
+            if (!classDeductPoints[className]) {
+                classDeductPoints[className] = 0;
+                if (classThresholds[className] === undefined) {
+                    classThresholds[className] = totalInitialPoints;
+                }
+            }
+        
+            let originalThreshold = classThresholds[className];
+            const finalPoints = Math.max(0, originalThreshold - classDeductPoints[className]);
+            const currentThreshold = finalPoints;
+        
+            const student = {
+                name: name,
+                class: className,
+                issue: issue,
+                deductPoints: deductPoints,
+                currentThreshold: currentThreshold,
+                finalPoints: finalPoints
+            };
+        
+            classDeductPoints[className] += deductPoints;
+            classThresholds[className] = totalInitialPoints - classDeductPoints[className];
+        
+            students.push(student);
+            displayStudents();
+        
+            // Thêm vào lịch sử
+            addToHistory('addStudent', student);
+        
+            document.getElementById('studentInput').value = '';
+            document.getElementById('classInput').value = '';
+            document.getElementById('issue').value = '';
+            document.getElementById('deductPoints').value = '';
+        }
+        
+
+        function addPoints() {
+            const name = document.getElementById('studentInput').value;
+            const className = document.getElementById('classInput').value;
+            const points = parseFloat(document.getElementById('deductPoints').value);
+        
+            if (!classDeductPoints[className]) {
+                classDeductPoints[className] = 0;
+                if (classThresholds[className] === undefined) {
+                    classThresholds[className] = totalInitialPoints;
+                }
+            }
+        
+            let originalThreshold = classThresholds[className];
+            const finalPoints = Math.max(0, originalThreshold - classDeductPoints[className]) + points;
+            const currentThreshold = finalPoints;
+        
+            const student = {
+                name: name,
+                class: className,
+                deductPoints: points,
+                currentThreshold: currentThreshold,
+                finalPoints: finalPoints
+            };
+        
+            classDeductPoints[className] += points;
+            classThresholds[className] = totalInitialPoints - classDeductPoints[className];
+        
+            students.push(student);
+            displayStudents();
+        
+            // Thêm vào lịch sử
+            addToHistory('addPoints', student);
+        
+            document.getElementById('studentInput').value = '';
+            document.getElementById('classInput').value = '';
+            document.getElementById('deductPoints').value = '';
+        }
+        
+
+         function exportToExcel() {
+        // Xóa lịch sử
+        history = [];
+        saveToLocalStorage()
+            if (students.length === 0) {
+                console.log("Không có sinh viên để xuất Excel");
+                return;
+            }
+        
+            const wb = XLSX.utils.book_new();
+        
+            const totalDeductPointsByClass = {};
+            students.forEach(student => {
+                if (!totalDeductPointsByClass[student.class]) {
+                    totalDeductPointsByClass[student.class] = 0;
+                }
+                totalDeductPointsByClass[student.class] += student.deductPoints;
+            });
+        
+            // Tạo một mảng mới để lưu trữ tổng điểm và tên lớp
+            const classScores = [];
+        
+            Object.keys(totalDeductPointsByClass).forEach(className => {
+                const totalDeductPointsForClass = totalDeductPointsByClass[className];
+                const finalPointsForClass = classThresholds[className] - totalDeductPointsForClass;
+        
+                // Thêm vào mảng
+                classScores.push({ className, totalDeductPointsForClass, finalPointsForClass });
+            });
+        
+            // Sắp xếp mảng theo số điểm từ cao xuống thấp
+          // Sắp xếp mảng theo số điểm từ cao xuống thấp
+classScores.sort((a, b) => {
+    const finalPointsA = classThresholds[a.className] - a.totalDeductPointsForClass;
+    const finalPointsB = classThresholds[b.className] - b.totalDeductPointsForClass;
+    return finalPointsB - finalPointsA;
+});
+
+// Tạo sheet tổng hợp sắp xếp các lớp theo số điểm từ cao xuống thấp
+const summaryData = [
+    ["Lớp", "Tổng Điểm"]
+];
+
+classScores.forEach(classScore => {
+    // Sửa đoạn này để chỉ hiển thị classThresholds[student.class]
+    const classThresholdForClass = classThresholds[classScore.className];
+    summaryData.push([classScore.className, classThresholdForClass]);
+});
+
+const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+summarySheet['!cols'] = [
+    { width: 10 },
+    { width: 20 }
+];
+
+XLSX.utils.book_append_sheet(wb, summarySheet, "Tổng hợp");
+
+        
+            // Tạo sheet danh sách học sinh theo từng lớp
+            classScores.forEach(classScore => {
+                const className = classScore.className;
+                const wsData = [
+                    ["Họ tên", "Lớp", "Lỗi mắc phải", "Điểm bị trừ", "Số Điểm Hiện Có"]
+                ];
+        
+                students
+                    .filter(student => student.class === className)
+                    .forEach(student => {
+                        wsData.push([student.name, student.class, student.issue, student.deductPoints, classThresholds[student.class]]);
+                    });
+        
+                wsData.push(["Tổng điểm trừ", "", "", classScore.totalDeductPointsForClass, ""]);
+        
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+        
+                ws['!cols'] = [
+                    { width: 20 },
+                    { width: 10 },
+                    { width: 30 },
+                    { width: 15 },
+                    { width: 20 }
+                ];
+        
+                XLSX.utils.book_append_sheet(wb, ws, `Danh sách ${className}`);
+            });
+        
+            XLSX.writeFile(wb, 'DanhSachHocSinh.xlsx');
+        }
+        
+        
+        
+
+        function displayStudents() {
+            const studentList = document.getElementById('studentList');
+            while (studentList.firstChild) {
+                studentList.removeChild(studentList.firstChild);
+            }
+
+            const groupedStudents = {};
+            students.forEach(student => {
+                if (!groupedStudents[student.class]) {
+                    groupedStudents[student.class] = [];
+                }
+                groupedStudents[student.class].push(student);
+            });
+
+            const sortedClasses = Object.keys(groupedStudents).sort();
+
+            sortedClasses.forEach(className => {
+                const classStudents = groupedStudents[className];
+
+                const classRow = document.createElement('tr');
+                classRow.innerHTML = `<td colspan="5" style="background-color: #4CAF50; color: white;">${className} - Tổng Điểm: ${classThresholds[className]}</td>`;
+                studentList.appendChild(classRow);
+
+                classStudents.forEach(student => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${student.name}</td>
+                        <td>${student.class}</td>
+                        <td>${student.issue}</td>
+                        <td>${student.deductPoints}</td>
+                        <td>${classThresholds[className]}</td>
+                    `;
+                    studentList.appendChild(row);
+                });
+            });
+        }
+        
+
+        function initAwesomplete() {
+            const classInput = document.getElementById('class');
+            const classOptions = [];
+
+            for (const grade in classes) {
+                classes[grade].forEach(cls => {
+                    classOptions.push(`${grade}${cls}`);
+                });
+            }
+
+            new Awesomplete(classInput, {
+                list: classOptions,
+                minChars: 1,
+                autoFirst: true,
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            generateClassOptions();
+            initAwesomplete();
+        });
+
+        function addToHistory(action, data) {
+            const timestamp = new Date();
+            const record = { timestamp, action, data };
+            history.push(record);
+        }
+        
+        function displayHistory() {
+            const historyList = document.getElementById('historyList');
+            while (historyList.firstChild) {
+                historyList.removeChild(historyList.firstChild);
+            }
+        
+            history.forEach(record => {
+                const row = document.createElement('div');
+                row.innerHTML = `
+                    <p>${record.timestamp.toLocaleString()} - ${record.action}: ${JSON.stringify(record.data)}</p>
+                `;
+                historyList.appendChild(row);
+            });
+        }
+        
+    </script>
+</body>
+</html>
